@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      :where([class^="ri-"])::before {
+        content: "\f3c2";
+      }
+      .nav-button:hover {
+        transform: translateY(-2px);
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-button:active {
+        transform: translateY(0);
+      }
+      body {
+        background-color: #f8fafc;
+      }
+      header {
+        background-color: #1e293b;
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: "#0EA5E9",
+              secondary: "#64748B",
+            },
+            borderRadius: {
+              none: "0px",
+              sm: "4px",
+              DEFAULT: "8px",
+              md: "12px",
+              lg: "16px",
+              xl: "20px",
+              "2xl": "24px",
+              "3xl": "32px",
+              full: "9999px",
+              button: "8px",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-white min-h-screen">
+    <main
+      class="container mx-auto px-4 py-12 flex flex-col items-center gap-12 min-h-screen"
+    >
+      <div class="text-center max-w-2xl mx-auto">
+        <h2 class="text-4xl font-bold text-gray-800 mb-4">
+          Admin Dashboard
+        </h2>
+        <p class="text-lg text-gray-600">
+          Manage all financial operations and system settings
+        </p>
+      </div>
+      <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-4 gap-8">
+<!-- Purchase Orders -->
+        <div class="flex flex-col items-center">
+          <a
+            href="PO-Admin.html"
+            id="poButton"
+            class="nav-button w-full aspect-square flex flex-col items-center justify-center bg-white border-2 border-primary/10 !rounded-button shadow-lg hover:shadow-xl hover:border-primary/20 p-8"
+          >
+            <div
+              class="w-20 h-20 flex items-center justify-center bg-indigo-100 rounded-full mb-6"
+            >
+              <i class="ri-shopping-cart-2-line text-indigo-600 text-4xl"></i>
+            </div>
+            <span
+              class="text-2xl font-medium text-gray-800 whitespace-nowrap mb-4"
+              >Purchase Orders</span
+            >
+            <p class="text-gray-600 text-center">
+              Manage and track your purchase orders efficiently
+            </p>
+            <div class="mt-4 text-sm text-indigo-600 font-medium">Admin Panel →</div>
+          </a>
+        </div>
+
+        <!-- Letters of Credit -->
+        <div class="flex flex-col items-center">
+          <a
+            href="LC's-Admin.html"
+            id="lcButton"
+            class="nav-button w-full aspect-square flex flex-col items-center justify-center bg-white border-2 border-primary/10 !rounded-button shadow-lg hover:shadow-xl hover:border-primary/20 p-8"
+          >
+            <div
+              class="w-20 h-20 flex items-center justify-center bg-indigo-100 rounded-full mb-6"
+            >
+              <i class="ri-bank-line text-indigo-600 text-4xl"></i>
+            </div>
+            <span
+              class="text-2xl font-medium text-gray-800 whitespace-nowrap mb-4"
+              >Letters of Credit</span
+            >
+            <p class="text-gray-600 text-center">
+              Process and monitor letter of credit transactions
+            </p>
+            <div class="mt-4 text-sm text-indigo-600 font-medium">Admin Panel →</div>
+          </a>
+        </div>
+
+        <!-- Telegraphic Transfer -->
+        <div class="flex flex-col items-center">
+          <a
+            href="TT1.html"
+            id="ttButton"
+            class="nav-button w-full aspect-square flex flex-col items-center justify-center bg-white border-2 border-primary/10 !rounded-button shadow-lg hover:shadow-xl hover:border-primary/20 p-8"
+          >
+            <div
+              class="w-20 h-20 flex items-center justify-center bg-indigo-100 rounded-full mb-6"
+            >
+              <i class="ri-exchange-funds-line text-indigo-600 text-4xl"></i>
+            </div>
+            <span
+              class="text-2xl font-medium text-gray-800 whitespace-nowrap mb-4"
+              >Telegraphic Transfer</span
+            >
+            <p class="text-gray-600 text-center">
+              Execute and track international wire transfers
+            </p>
+            <div class="mt-4 text-sm text-indigo-600 font-medium">Admin Panel →</div>
+          </a>
+        </div>
+
+        <!-- Add Shipment -->
+        <div class="flex flex-col items-center">
+          <a
+            href="add-shipment.html"
+id="shipmentButton"
+            class="nav-button w-full aspect-square flex flex-col items-center justify-center bg-white border-2 border-primary/10 !rounded-button shadow-lg hover:shadow-xl hover:border-primary/20 p-8"
+          >
+            <div
+              class="w-20 h-20 flex items-center justify-center bg-indigo-100 rounded-full mb-6"
+            >
+              <i class="ri-ship-line text-indigo-600 text-4xl"></i>
+            </div>
+            <span
+              class="text-2xl font-medium text-gray-800 whitespace-nowrap mb-4"
+              >Add Shipment</span
+            >
+            <p class="text-gray-600 text-center">
+              Create and manage new shipment records
+            </p>
+            <div class="mt-4 text-sm text-indigo-600 font-medium">Admin Panel →</div>
+          </a>
+        </div>
+      </div>
+    </main>
+<script>
+      // Set admin flags before navigating
+      document.getElementById("poButton").addEventListener("click", () => {
+        localStorage.setItem("adminView", "true");
+        localStorage.setItem("selectedPO", "all");
+      });
+      document.getElementById("lcButton").addEventListener("click", () => {
+        localStorage.setItem("adminView", "true");
+        localStorage.setItem("selectedLC", "all");
+      });
+      document.getElementById("ttButton").addEventListener("click", () => {
+        localStorage.setItem("adminView", "true");
+        localStorage.setItem("selectedTT", "all");
+      });
+      document.getElementById("shipmentButton").addEventListener("click", () => {
+        localStorage.setItem("adminView", "true");
+        localStorage.setItem("selectedShipment", "all");
+      });
+</script>
+  </body>
+</html>
