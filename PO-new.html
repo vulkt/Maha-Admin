@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create New PO - Admin</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, setDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+      authDomain: "tex1-e6595.firebaseapp.com",
+      projectId: "tex1-e6595",
+      storageBucket: "tex1-e6595.firebasestorage.app",
+      messagingSenderId: "535507700855",
+      appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+    };
+  
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+  
+    async function createPO(event) {
+      event.preventDefault();
+  
+      const poNumber = document.getElementById("poNumber").value.trim();
+      if (!poNumber) {
+        alert("PO Number is required");
+        return;
+      }
+  
+      const paymentMethod = document.getElementById("paymentMethod").value;
+      if (!paymentMethod) {
+        alert("Please select a payment method");
+        return;
+      }
+  
+      const poData = {
+        "PO-NO": poNumber,
+        "Issue-Date": document.getElementById("issueDate").value 
+          ? Timestamp.fromDate(new Date(document.getElementById("issueDate").value)) 
+          : null,
+        "Down-Payment": parseFloat(document.getElementById("downPayment").value) || 0,
+        "PO-Value": parseFloat(document.getElementById("poValue").value) || 0,
+        "LC-NO": document.getElementById("lcNumber").value || "",
+        "Production-Period": parseInt(document.getElementById("productionPeriod").value) || null,
+        "Delivery-Date": document.getElementById("deliveryDate").value 
+          ? Timestamp.fromDate(new Date(document.getElementById("deliveryDate").value)) 
+          : null,
+        "Payment-Method": paymentMethod
+      };
+  
+      // Choose the correct path based on LC/TT
+      const poPath = paymentMethod === "LC" ? "LC-PO" : "TT-PO";
+  
+      try {
+        await setDoc(doc(db, `maha/PO/${poPath}`, poNumber), poData);
+        alert("PO created successfully!");
+        document.getElementById("poForm").reset();
+      } catch (error) {
+        console.error("Error creating PO:", error);
+        alert("Failed to create PO. Check console for details.");
+      }
+    }
+  
+    window.createPO = createPO;
+  </script>
+  
+</head>
+<body class="bg-white min-h-screen">
+  <div class="max-w-5xl mx-auto px-6 py-8">
+    <div class="mb-8">
+      <div class="flex items-center gap-4 mb-6">
+        <button onclick="window.history.back()" class="flex items-center justify-center w-10 h-10 text-gray-600 hover:text-primary transition-colors">←</button>
+        <h1 class="text-2xl font-bold text-black">Create New Purchase Order</h1>
+      </div>
+    </div>
+
+    <!-- General Info Form -->
+    <form id="poForm" class="space-y-6" onsubmit="createPO(event)">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">PO Number</label>
+          <input id="poNumber" type="text" class="w-full border rounded-lg px-3 py-2" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Issue Date</label>
+          <input id="issueDate" type="date" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Down Payment (USD)</label>
+          <input id="downPayment" type="number" step="0.01" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">PO Value (USD)</label>
+          <input id="poValue" type="number" step="0.01" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">LC Number</label>
+          <input id="lcNumber" type="text" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Production Period (days)</label>
+          <input id="productionPeriod" type="number" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Delivery Date</label>
+          <input id="deliveryDate" type="date" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Payment Method</label>
+          <select id="paymentMethod" class="w-full border rounded-lg px-3 py-2">
+            <option value="">Select Method</option>
+            <option value="LC">LC</option>
+            <option value="TT">TT</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="flex justify-end mt-8">
+        <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Create PO</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

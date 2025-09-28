@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PO Details - Purchase Order Management</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+      authDomain: "tex1-e6595.firebaseapp.com",
+      projectId: "tex1-e6595",
+      storageBucket: "tex1-e6595.firebasestorage.app",
+      messagingSenderId: "535507700855",
+      appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentDocRef = null;
+
+    async function loadPODetails() {
+      const poNumber = localStorage.getItem("selectedPONumber");
+      if (!poNumber) {
+        alert("No PO number found in storage!");
+        return;
+      }
+
+      // Try LC-PO first, then TT-PO
+      let poDocRef = doc(db, "maha/PO/LC-PO", poNumber);
+      let poSnap = await getDoc(poDocRef);
+
+      if (!poSnap.exists()) {
+        poDocRef = doc(db, "maha/PO/TT-PO", poNumber);
+        poSnap = await getDoc(poDocRef);
+      }
+
+      if (!poSnap.exists()) {
+        alert("PO not found in Firestore");
+        return;
+      }
+
+      currentDocRef = poDocRef;
+      const poData = poSnap.data();
+
+      // Fill editable fields
+      document.getElementById("poNumber").value = poData["PO-NO"] || poNumber;
+      document.getElementById("issueDate").value = formatDateInput(poData["Issue-Date"]);
+      document.getElementById("downPayment").value = poData["Down-Payment"] || "";
+      document.getElementById("poValue").value = poData["PO-Value"] || "";
+      document.getElementById("lcNumber").value = poData["LC-NO"] || "";
+      document.getElementById("productionPeriod").value = poData["Production-Period"] || "";
+      document.getElementById("deliveryDate").value = formatDateInput(poData["Delivery-Date"]);
+
+      // Shipments (still readonly list)
+      const tbody = document.getElementById("shipmentTableBody");
+      tbody.innerHTML = "";
+      let totalExpected = 0;
+
+      if (poData.shipments && Array.isArray(poData.shipments)) {
+        poData.shipments.forEach((s, index) => {
+          totalExpected += s["Expected-Amount"] || 0;
+          const row = document.createElement("tr");
+          row.className = "hover:bg-gray-50 transition-colors cursor-pointer";
+          row.onclick = () => {
+            localStorage.setItem("selectedShipment", JSON.stringify(s));
+            localStorage.setItem("selectedShipmentIndex", index);
+            window.location.href = "Shipment-Admin.html";
+          };
+          row.innerHTML = `
+            <td class="px-6 py-4 text-sm">${s["Shipment-Date"] ? new Date(s["Shipment-Date"].seconds * 1000).toLocaleDateString() : "—"}</td>
+            <td class="px-6 py-4 text-sm">${s["Payment-Terms"] || "—"}</td>
+            <td class="px-6 py-4 text-sm">${s["Status"] || "—"}</td>
+            <td class="px-6 py-4 text-sm">${s["Expected-Amount"] !== undefined ? s["Expected-Amount"].toFixed(2) : "—"}</td>
+            <td class="px-6 py-4 text-sm">${s["Expected-Date"] ? new Date(s["Expected-Date"].seconds * 1000).toLocaleDateString() : "—"}</td>
+          `;
+          tbody.appendChild(row);
+        });
+        document.getElementById("shipmentCount").innerText = `Showing ${poData.shipments.length} shipments`;
+        document.getElementById("totalInvoice").innerText = `Total Expected: ${totalExpected.toFixed(2)}`;
+      } else {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No shipments found</td></tr>`;
+        document.getElementById("shipmentCount").innerText = "No shipments";
+        document.getElementById("totalInvoice").innerText = "—";
+      }
+    }
+
+    function formatDateInput(value) {
+      if (!value) return "";
+      let date = value.toDate ? value.toDate() : new Date(value);
+      return date.toISOString().split("T")[0]; // yyyy-mm-dd
+    }
+
+    async function saveChanges() {
+      if (!currentDocRef) {
+        alert("No PO loaded");
+        return;
+      }
+
+      const updatedData = {
+        "PO-NO": document.getElementById("poNumber").value,
+        "Issue-Date": new Date(document.getElementById("issueDate").value),
+        "Down-Payment": parseFloat(document.getElementById("downPayment").value) || 0,
+        "PO-Value": parseFloat(document.getElementById("poValue").value) || 0,
+        "LC-NO": document.getElementById("lcNumber").value,
+        "Production-Period": parseInt(document.getElementById("productionPeriod").value) || 0,
+        "Delivery-Date": new Date(document.getElementById("deliveryDate").value),
+      };
+
+      try {
+        await updateDoc(currentDocRef, updatedData);
+        alert("PO updated successfully!");
+      } catch (err) {
+        console.error("Error updating PO:", err);
+        alert("Failed to update PO");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadPODetails);
+    window.saveChanges = saveChanges;
+  </script>
+</head>
+<body class="bg-white min-h-screen">
+  <div class="max-w-7xl mx-auto px-6 py-8">
+    <div class="mb-8">
+      <div class="flex items-center gap-4 mb-6">
+        <button onclick="window.history.back()" class="w-10 h-10 text-gray-600 hover:text-primary">←</button>
+        <h1 class="text-2xl font-bold text-black">Purchase Order Details</h1>
+      </div>
+    </div>
+
+    <div class="space-y-8">
+      <!-- General Information -->
+      <div class="bg-white border rounded-lg shadow-sm overflow-hidden">
+        <div class="bg-gray-100 px-6 py-4 border-b">
+          <h2 class="text-lg font-semibold text-black">General Information</h2>
+        </div>
+        <div class="p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">PO Number</label>
+                <input id="poNumber" class="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">PO Date</label>
+                <input id="issueDate" type="date" class="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">Down Payment</label>
+                <input id="downPayment" type="number" step="0.01" class="w-full border rounded px-3 py-2" />
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">PO Value</label>
+                <input id="poValue" type="number" step="0.01" class="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">LC Number</label>
+                <input id="lcNumber" class="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">Production Period (days)</label>
+                <input id="productionPeriod" type="number" class="w-full border rounded px-3 py-2" />
+              </div>
+            </div>
+          </div>
+          <div class="mt-6 pt-6 border-t">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Delivery Date</label>
+              <input id="deliveryDate" type="date" class="w-full border rounded px-3 py-2" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+<div class="flex justify-end items-center pt-6 gap-3">
+  <button onclick="saveChanges()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+    Submit Changes
+  </button>
+  
+</div>
+
+
+      <!-- Shipments -->
+      <div class="bg-white border rounded-lg shadow-sm overflow-hidden">
+        <div class="bg-gray-100 px-6 py-4 border-b">
+          <h2 class="text-lg font-semibold text-black">Shipment & Payment Details</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-600">Shipment Date</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-600">Payment Terms</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-600">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-600">Expected Amount</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-600">Expected Payment Date</th>
+              </tr>
+            </thead>
+            <tbody id="shipmentTableBody" class="divide-y">
+              <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="bg-gray-50 px-6 py-3 border-t flex justify-between">
+          <div id="shipmentCount" class="text-sm text-gray-600">—</div>
+          <div id="totalInvoice" class="text-sm font-medium text-black">—</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      
+    </div>
+  </div>
+</body>
+</html>

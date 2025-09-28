@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipment Details</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+      authDomain: "tex1-e6595.firebaseapp.com",
+      projectId: "tex1-e6595",
+      storageBucket: "tex1-e6595.firebasestorage.app",
+      messagingSenderId: "535507700855",
+      appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Helper functions
+    function formatDateInput(value) {
+      if (!value) return "";
+      const date = value.seconds ? new Date(value.seconds * 1000) : new Date(value);
+      return date.toISOString().split("T")[0];
+    }
+
+    function formatCurrencyInput(value) {
+      return value !== undefined && value !== null ? parseFloat(value) : "";
+    }
+
+    // Save changes to Firestore (PO + LC)
+    async function saveChanges() {
+  // Shipment from localStorage
+  const shipment = JSON.parse(localStorage.getItem("selectedShipment") || "{}");
+  const shipmentIndex = localStorage.getItem("selectedShipmentIndex");
+
+  if (!shipment || !shipment["PO-NO"]) {
+    alert("No shipment or PO number found!");
+    return;
+  }
+
+  const poNumber = shipment["PO-NO"];
+
+  // Check LC-PO first, then TT-PO
+  let poDocRef = doc(db, "maha/PO/LC-PO", poNumber);
+  let poSnap = await getDoc(poDocRef);
+
+  if (!poSnap.exists()) {
+    poDocRef = doc(db, "maha/PO/TT-PO", poNumber);
+    poSnap = await getDoc(poDocRef);
+  }
+
+  if (!poSnap.exists()) {
+    alert("PO not found in Firestore");
+    return;
+  }
+
+  const poData = poSnap.data();
+  if (shipmentIndex === null || !poData.shipments || !poData.shipments[shipmentIndex]) {
+    alert("Shipment not found in PO");
+    return;
+  }
+
+  // Build updated shipment
+  const updatedShipment = {
+    "Shipment-Date": new Date(document.getElementById("Shipment-Date").value),
+    "Payment-Terms": document.getElementById("Payment-Terms").value,
+    "PO-NO": document.getElementById("PO-NO").value,
+    "Shipment-Value": parseFloat(document.getElementById("Shipment-Value").value) || 0,
+    "Expected-Amount": parseFloat(document.getElementById("Expected-Amount").value) || 0,
+    "LC-TT": document.getElementById("LC-TT").value,
+    "Invoice-NO": document.getElementById("Invoice-NO").value,
+    "LC-TT-Related": document.getElementById("LC-TT-Related").value,
+    "Expected-Date": new Date(document.getElementById("Expected-Date").value),
+    "Status": document.getElementById("Status").value,
+    "Down-Payment": parseFloat(document.getElementById("Down-Payment").value) || 0,
+    "Final-Payment": parseFloat(document.getElementById("Final-Payment").value) || 0,
+  };
+
+  try {
+    // 1) Update PO shipments array
+    const updatedShipments = [...poData.shipments];
+    updatedShipments[shipmentIndex] = updatedShipment;
+    await updateDoc(poDocRef, { shipments: updatedShipments });
+
+    // 2) Update related LC shipments array
+    const lcNumber = updatedShipment["LC-TT-Related"];
+    if (lcNumber) {
+      const lcDocRef = doc(db, `maha/LC/LC#/${lcNumber}/Details/LC-Info`);
+      const lcSnap = await getDoc(lcDocRef);
+
+      if (lcSnap.exists()) {
+        const lcData = lcSnap.data();
+        const lcShipments = lcData.shipments || [];
+
+        // Find the same shipment in LC by PO-NO + Invoice-NO
+        const existingIndex = lcShipments.findIndex(s =>
+          s["PO-NO"] === updatedShipment["PO-NO"] &&
+          s["Invoice-NO"] === updatedShipment["Invoice-NO"]
+        );
+
+        if (existingIndex !== -1) {
+          lcShipments[existingIndex] = updatedShipment;
+          await updateDoc(lcDocRef, { shipments: lcShipments });
+        } else {
+          console.warn("Shipment not found in LC document, skipping LC update.");
+        }
+      }
+    }
+
+    alert("Shipment updated successfully in PO and LC!");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update shipment.");
+  }
+}
+
+
+    // Build editable shipment card
+    const shipment = JSON.parse(localStorage.getItem("selectedShipment") || "{}");
+    if (shipment && Object.keys(shipment).length > 0) {
+      const card = document.createElement("div");
+      card.className = "bg-white rounded-md border border-gray-200 shadow-sm p-8";
+
+      card.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+        <div class="space-y-5">
+          <div>
+            <label class="block text-sm text-gray-500 mb-1.5">Date of Shipment</label>
+            <input type="date" id="Shipment-Date" class="w-full border rounded px-3 py-2" value="${formatDateInput(shipment['Shipment-Date'])}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">Terms of Payment</label>
+            <input type="text" id="Payment-Terms" class="w-full border rounded px-3 py-2" value="${shipment['Payment-Terms'] || ''}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">PO No.</label>
+            <input type="text" id="PO-NO" class="w-full border rounded px-3 py-2" value="${shipment['PO-NO'] || ''}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">Value Amount</label>
+            <input type="number" step="0.01" id="Shipment-Value" class="w-full border rounded px-3 py-2" value="${formatCurrencyInput(shipment['Shipment-Value'])}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">Expected Amount</label>
+            <input type="number" step="0.01" id="Expected-Amount" class="w-full border rounded px-3 py-2" value="${formatCurrencyInput(shipment['Expected-Amount'])}">
+          </div>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">LC/TT</label>
+            <input type="text" id="LC-TT" class="w-full border rounded px-3 py-2" value="${shipment['LC-TT'] || ''}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">Invoice No.</label>
+            <input type="text" id="Invoice-NO" class="w-full border rounded px-3 py-2" value="${shipment['Invoice-NO'] || ''}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">LC Related</label>
+            <input type="text" id="LC-TT-Related" class="w-full border rounded px-3 py-2" value="${shipment['LC-TT-Related'] || ''}">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-500 mb-1">Expected Date</label>
+            <input type="date" id="Expected-Date" class="w-full border rounded px-3 py-2" value="${formatDateInput(shipment['Expected-Date'])}">
+          </div>
+          <div>
+  <label class="block text-sm text-gray-500 mb-1">Status</label>
+  <select id="Status" class="w-full border rounded px-3 py-2">
+    <option value="">Select status</option>
+    <option value="Received" ${shipment["Status"] === "Received" ? "selected" : ""}>Received</option>
+    <option value="Not Received" ${shipment["Status"] === "Not Received" ? "selected" : ""}>Not Received</option>
+  </select>
+</div>
+
+        </div>
+      </div>
+
+      <div class="mt-8 pt-6 border-t border-gray-200 grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm text-gray-500 mb-1">Down Payment (%) </label>
+          <input type="number" step="0.01" id="Down-Payment" class="w-full border rounded px-3 py-2" value="${formatCurrencyInput(shipment['Down-Payment'])}">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-500 mb-1">Final Payment (%) </label>
+          <input type="number" step="0.01" id="Final-Payment" class="w-full border rounded px-3 py-2" value="${formatCurrencyInput(shipment['Final-Payment'])}">
+        </div>
+      </div>
+
+      <button onclick="saveChanges()" class="mt-6 w-full flex items-center justify-center px-4 py-2.5 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 transition-colors">
+        Submit Changes
+      </button>
+      `;
+      document.getElementById("shipmentCardContainer").appendChild(card);
+    } else {
+      document.getElementById("shipmentCardContainer").innerHTML = `
+          <div class="text-center text-gray-500 py-12">
+              No shipment data available.
+          </div>
+      `;
+    }
+
+    window.saveChanges = saveChanges; // make it global
+  </script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+  <style> body { font-family: 'Inter', sans-serif; } </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-6xl mx-auto px-6 py-8">
+    <div class="mb-8">
+      <h1 class="text-3xl font-semibold text-gray-900 mb-2">Shipment Details</h1>
+      <p class="text-gray-600">Detailed information about your selected shipment</p>
+    </div>
+    <div id="shipmentCardContainer" class="space-y-6"></div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Letters of Credit Viewer</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css"
+    />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: "#3b82f6",
+              secondary: "#e0f2fe",
+            },
+            borderRadius: {
+              none: "0px",
+              sm: "4px",
+              DEFAULT: "8px",
+              md: "12px",
+              lg: "16px",
+              xl: "20px",
+              "2xl": "24px",
+              "3xl": "32px",
+              full: "9999px",
+              button: "8px",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      :where([class^="ri-"])::before {
+      content: "\f3c2";
+      }
+    </style>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getFirestore, 
+    collection, 
+    getDocs, 
+    doc, 
+    getDoc, 
+    updateDoc, 
+    setDoc, 
+    Timestamp 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  
+  const firebaseConfig = {
+    apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+    authDomain: "tex1-e6595.firebaseapp.com",
+    projectId: "tex1-e6595",
+    storageBucket: "tex1-e6595.firebasestorage.app",
+    messagingSenderId: "535507700855",
+    appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+  };
+  
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const lcContainer = document.getElementById("lcContainer");
+  
+  // Add "Add New LC" button
+  const addNewBtn = document.createElement("button");
+  addNewBtn.textContent = "Add New LC";
+  addNewBtn.className = "fixed top-6 right-6 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 z-50";
+  document.body.appendChild(addNewBtn);
+  
+  function formatDate(ts) {
+    if (!ts) return "";
+    if (ts instanceof Timestamp) return ts.toDate().toISOString().split("T")[0];
+    if (ts instanceof Date) return ts.toISOString().split("T")[0];
+    return "";
+  }
+  
+  function statusBadgeClass(status) {
+    switch (status?.toLowerCase()) {
+      case "active": return "bg-green-100 text-green-800";
+      case "expired": return "bg-red-100 text-red-800";
+      case "pending": return "bg-yellow-100 text-yellow-800";
+      case "in process": return "bg-blue-100 text-blue-800";
+      default: return "bg-gray-100 text-gray-700";
+    }
+  }
+  
+  async function loadLCs() {
+    lcContainer.innerHTML = "";
+    try {
+      const lcNumbersSnap = await getDocs(collection(db, "maha", "LC", "LC#"));
+      for (const lcDoc of lcNumbersSnap.docs) {
+        const lcNumber = lcDoc.id;
+        const lcInfoRef = doc(db, "maha", "LC", "LC#", lcNumber, "Details", "LC-Info");
+        const lcInfoSnap = await getDoc(lcInfoRef);
+        if (!lcInfoSnap.exists()) continue;
+  
+        const lcInfo = lcInfoSnap.data();
+        const detailsRef = collection(db, "maha", "LC", "LC#", lcNumber, "Details");
+        const detailsSnap = await getDocs(detailsRef);
+        const relatedPOs = detailsSnap.docs.filter(d => d.id !== "LC-Info").map(d => d.id);
+  
+        const card = createLCCard(lcNumber, lcInfo, relatedPOs, false);
+        lcContainer.appendChild(card);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  
+  function createLCCard(lcNumber, lcInfo = {}, relatedPOs = [], isNew = false) {
+  const card = document.createElement("div");
+  card.className =
+    "bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow lc-card p-6";
+
+  if (!isNew) {
+    // ---------------- Read-only card for existing LCs ----------------
+    card.innerHTML = `
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <p class="text-xl font-bold text-gray-900 mb-1">${lcInfo["LC-NO"] || ""}</p>
+          <p class="text-sm text-gray-900">${lcInfo.Bank || ""}</p>
+        </div>
+        <span class="px-3 py-1 text-sm font-medium rounded-full ${statusBadgeClass(lcInfo.Status)}">
+          ${lcInfo.Status || ""}
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Value</p>
+          <p class="text-lg font-semibold text-gray-900">${lcInfo["LC-Value"] || ""}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Balance</p>
+          <p class="text-lg font-semibold text-green-600">${lcInfo["LC-Balance"] || ""}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Issue Date</p>
+          <p class="text-sm font-medium text-gray-900">${formatDate(lcInfo["Issue-Date"])}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Expire Date</p>
+          <p class="text-sm font-medium text-red-600">${formatDate(lcInfo["Expire-Date"])}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Down Payment</p>
+          <p class="text-sm font-medium text-gray-900">${lcInfo["Down-Payment"] || ""}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Utilized</p>
+          <p class="text-sm font-medium text-gray-900">${lcInfo["LC-Utilized"] || ""}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Payment Terms</p>
+          <p class="text-sm font-medium text-gray-900">${lcInfo["Payment-Term"] || ""}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Last Shipment Date</p>
+          <p class="text-sm font-medium text-blue-600">${formatDate(lcInfo["Last-Shipment-Date"])}</p>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500 mb-2">Related PO#</p>
+        <div class="flex flex-wrap gap-2">
+          ${relatedPOs
+            .map(
+              (po) =>
+                `<span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">${po}</span>`
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+    // 👇 Click to go to next page with lcNumber
+    card.addEventListener("click", () => {
+      localStorage.setItem("selectedLC", lcNumber);
+      window.location.href = "lC-Details-Admin.html"; 
+    });
+
+  } else {
+    // ---------------- Editable card only for new LC ----------------
+    card.innerHTML = `
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <input type="text" placeholder="Enter LC Number" 
+            class="edit-input text-xl font-bold text-gray-900 w-full mb-1" 
+            data-field="LC-NO">
+          <select class="edit-input text-sm text-gray-900 w-full" data-field="Bank">
+            <option value="">Select Bank</option>
+            <option value="Alinma Bank">Alinma Bank</option>
+            <option value="ANB">ANB</option>
+          </select>
+        </div>
+        <select class="edit-input px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-700" data-field="Status">
+          <option value="">Select Status</option>
+          <option value="Active">Active</option>
+          <option value="Expired">Expired</option>
+          <option value="Pending">Pending</option>
+          <option value="In Process">In Process</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Value</p>
+          <input type="number" class="edit-input text-lg font-semibold text-gray-900 w-full" data-field="LC-Value">
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Balance</p>
+          <input type="number" class="edit-input text-lg font-semibold text-green-600 w-full" data-field="LC-Balance">
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Issue Date</p>
+          <input type="date" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="Issue-Date">
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Expire Date</p>
+          <input type="date" class="edit-input text-sm font-medium text-red-600 w-full" data-field="Expire-Date">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Down Payment</p>
+          <input type="number" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="Down-Payment">
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">LC Utilized</p>
+          <input type="number" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="LC-Utilized">
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Payment Terms</p>
+          <input type="number" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="Payment-Term">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Last Shipment Date</p>
+          <input type="date" class="edit-input text-sm font-medium text-blue-600 w-full" data-field="Last-Shipment-Date">
+        </div>
+      </div>
+
+      <div class="flex gap-2 mt-4">
+        <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 save-btn">Add LC</button>
+        <button class="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 cancel-btn">Cancel</button>
+      </div>
+    `;
+
+    // Save handler for new LC
+    card.querySelector(".save-btn").addEventListener("click", async () => {
+      const inputs = card.querySelectorAll(".edit-input");
+      const updates = {};
+
+      inputs.forEach((input) => {
+        let val = input.value;
+        const field = input.getAttribute("data-field");
+
+        if (input.type === "date" && val) {
+          val = Timestamp.fromDate(new Date(val));
+        } else if (input.type === "number") {
+          val = Number(val);
+        }
+        updates[field] = val;
+      });
+
+      try {
+        const lcNo = updates["LC-NO"];
+        if (!lcNo) {
+          alert("Please enter an LC-NO before saving.");
+          return;
+        }
+
+        const lcDocRef = doc(db, "maha", "LC", "LC#", lcNo);
+        const lcInfoRef = doc(db, "maha", "LC", "LC#", lcNo, "Details", "LC-Info");
+
+        await setDoc(lcDocRef, { hi: true });
+        await setDoc(lcInfoRef, updates);
+        alert("New LC added!");
+        loadLCs();
+      } catch (err) {
+        console.error(err);
+        alert("Error saving LC!");
+      }
+    });
+
+    card.querySelector(".cancel-btn").addEventListener("click", () => loadLCs());
+  }
+
+  return card;
+}
+
+
+  
+  // Show new LC card
+  addNewBtn.addEventListener("click", () => {
+    lcContainer.innerHTML = "";
+    const newCard = createLCCard(null, {}, [], true);
+    lcContainer.appendChild(newCard);
+  });
+  
+  // Initial load
+  document.addEventListener("DOMContentLoaded", loadLCs);
+</script>
+
+  
+  
+
+  </head>
+  <body class="bg-gray-50 min-h-screen">
+    <div class="w-full">
+      <main class="max-w-7xl mx-auto px-6 py-8">
+        <div class="mb-8">
+          <h2 class="text-3xl font-bold text-gray-900 mb-2">
+            Letters of Credit
+          </h2>
+          <p class="text-gray-600">Manage and track your letters of credit</p>
+        </div>
+        <div
+          class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8"
+        >
+          <div class="flex flex-col lg:flex-row gap-6">
+            <div class="flex-1">
+              <div class="relative">
+                <div
+                  class="w-5 h-5 flex items-center justify-center absolute left-3 top-1/2 transform -translate-y-1/2"
+                >
+                  <i class="ri-search-line text-gray-400"></i>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by LC No."
+                  class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm bg-gray-50/50"
+                  id="searchInput"
+                />
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-3">
+              <div class="relative group">
+                <button
+                  class="w-[140px] pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg group-hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm bg-gray-50/50 text-left"
+                  id="dateFilterBtn"
+                >
+                  <span class="text-gray-500">Date Range</span>
+                </button>
+                <div
+                  class="w-4 h-4 flex items-center justify-center absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-primary"
+                >
+                  <i class="ri-arrow-down-s-line"></i>
+                </div>
+                <div
+                  class="hidden absolute z-50 w-[200px] mt-2 py-2 bg-white rounded-lg shadow-lg border border-gray-100"
+                  id="dateFilterDropdown"
+                >
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value=""
+                  >
+                    Date Range
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="today"
+                  >
+                    Today
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="thisWeek"
+                  >
+                    This Week
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="thisMonth"
+                  >
+                    This Month
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="last3Months"
+                  >
+                    Last 3 Months
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="last6Months"
+                  >
+                    Last 6 Months
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="thisYear"
+                  >
+                    This Year
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="lastYear"
+                  >
+                    Last Year
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="last5Years"
+                  >
+                    Last 5 Years
+                  </div>
+                </div>
+              </div>
+              
+              <div class="relative group">
+                <button
+                  class="w-[140px] pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg group-hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm bg-gray-50/50 text-left"
+                  id="valueFilterBtn"
+                >
+                  <span class="text-gray-500">Value Range</span>
+                </button>
+                <div
+                  class="w-4 h-4 flex items-center justify-center absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-primary"
+                >
+                  <i class="ri-arrow-down-s-line"></i>
+                </div>
+                <div
+                  class="hidden absolute z-50 w-[200px] mt-2 py-2 bg-white rounded-lg shadow-lg border border-gray-100"
+                  id="valueFilterDropdown"
+                >
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value=""
+                  >
+                    Value Range
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$0 - $50k"
+                  >
+                    $0 - $50k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$50k - $100k"
+                  >
+                    $50k - $100k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$100k - $200k"
+                  >
+                    $100k - $200k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$200k - $350k"
+                  >
+                    $200k - $350k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$350k - $550k"
+                  >
+                    $350k - $550k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$550k - $800k"
+                  >
+                    $550k - $800k
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$800k - $1.2M"
+                  >
+                    $800k - $1.2M
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="$1.2M+"
+                  >
+                    $1.2M+
+                  </div>
+                </div>
+              </div>
+              
+              <div class="relative group">
+                <button
+                  class="w-[180px] pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg group-hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm bg-gray-50/50 text-left"
+                  id="bankFilterBtn"
+                >
+                  <span class="text-gray-500">Bank</span>
+                </button>
+                <div
+                  class="w-4 h-4 flex items-center justify-center absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-primary"
+                >
+                  <i class="ri-arrow-down-s-line"></i>
+                </div>
+                <div
+                  class="hidden absolute z-50 w-[240px] mt-2 py-2 bg-white rounded-lg shadow-lg border border-gray-100"
+                  id="bankFilterDropdown"
+                >
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value=""
+                  >
+                    Bank
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="Alinma Bank"
+                  >
+                  Alinma Bank
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="ANB"
+                  >
+                    ANB
+                  </div>
+                </div>
+              </div>
+              
+              <div class="relative group">
+                <button
+                  class="w-[140px] pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg group-hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm bg-gray-50/50 text-left"
+                  id="statusFilterBtn"
+                >
+                  <span class="text-gray-500">Status</span>
+                </button>
+                <div
+                  class="w-4 h-4 flex items-center justify-center absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-primary"
+                >
+                  <i class="ri-arrow-down-s-line"></i>
+                </div>
+                <div
+                  class="hidden absolute z-50 w-[200px] mt-2 py-2 bg-white rounded-lg shadow-lg border border-gray-100"
+                  id="statusFilterDropdown"
+                >
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value=""
+                  >
+                    Status
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="active"
+                  >
+                    Active
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="pending"
+                  >
+                    Pending
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="inProcess"
+                  >
+                    In Process
+                  </div>
+                  <div
+                    class="hover:bg-gray-50 px-4 py-2 cursor-pointer text-sm text-gray-700"
+                    data-value="expired"
+                  >
+                    Expired
+                  </div>
+                </div>
+              </div>
+              <button
+                class="px-4 py-2.5 text-primary hover:bg-primary hover:text-white transition-colors rounded-lg text-sm font-medium whitespace-nowrap !rounded-button border border-transparent hover:border-primary/10"
+                id="clearFilters"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-4" id="lcContainer">
+         
+          
+          <div
+            class="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer lc-card"
+          >
+            <div class="p-6">
+              <div class="flex items-start justify-between mb-4">
+                <div>
+                  <h3 class="text-xl font-bold text-gray-900">LC-2024-004</h3>
+                  <p class="text-sm text-gray-500 mt-1">Citibank</p>
+                </div>
+                <span
+                  class="px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full"
+                  >Expired</span
+                >
+              </div>
+              <div
+                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6"
+              >
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Value</p>
+                  <p class="text-lg font-semibold text-gray-900">$1,500,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Balance</p>
+                  <p class="text-lg font-semibold text-green-600">$0</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Issue Date</p>
+                  <p class="text-sm font-medium text-gray-900">Jan 05, 2024</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Expire Date</p>
+                  <p class="text-sm font-medium text-red-600">Jul 05, 2024</p>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Down Payment</p>
+                  <p class="text-sm font-medium text-gray-900">$150,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Utilized</p>
+                  <p class="text-sm font-medium text-gray-900">$1,500,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Payment Terms</p>
+                  <p class="text-sm font-medium text-gray-900">30 Days Net</p>
+                </div>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500 mb-2">Related PO#</p>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                    >PO.2190</span
+                  >
+                  <span
+                    class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                    >PO.2191</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer lc-card"
+          >
+            <div class="p-6">
+              <div class="flex items-start justify-between mb-4">
+                <div>
+                  <h3 class="text-xl font-bold text-gray-900">LC-2024-005</h3>
+                  <p class="text-sm text-gray-500 mt-1">HSBC Bank</p>
+                </div>
+                <span
+                  class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full"
+                  >Active</span
+                >
+              </div>
+              <div
+                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6"
+              >
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Value</p>
+                  <p class="text-lg font-semibold text-gray-900">$4,800,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Balance</p>
+                  <p class="text-lg font-semibold text-green-600">$3,200,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Issue Date</p>
+                  <p class="text-sm font-medium text-gray-900">Apr 15, 2024</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Expire Date</p>
+                  <p class="text-sm font-medium text-gray-900">Apr 15, 2025</p>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Down Payment</p>
+                  <p class="text-sm font-medium text-gray-900">$480,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">LC Utilized</p>
+                  <p class="text-sm font-medium text-gray-900">$1,600,000</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 mb-1">Payment Terms</p>
+                  <p class="text-sm font-medium text-gray-900">90 Days Net</p>
+                </div>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500 mb-2">Related PO#</p>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                    >PO.2209</span
+                  >
+                  <span
+                    class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                    >PO.2210</span
+                  >
+                  <span
+                    class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                    >PO.2211</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </main>
+    </div>
+   
+    <script id="filter-functionality">
+      document.addEventListener("DOMContentLoaded", function () {
+        const filters = {
+          date: { btn: "dateFilterBtn", dropdown: "dateFilterDropdown", value: "" },
+          value: { btn: "valueFilterBtn", dropdown: "valueFilterDropdown", value: "" },
+          bank: { btn: "bankFilterBtn", dropdown: "bankFilterDropdown", value: "" },
+          status: { btn: "statusFilterBtn", dropdown: "statusFilterDropdown", value: "" },
+        };
+      
+        let activeDropdown = null;
+      
+        // Date ranges for the dropdown
+        const dateRanges = [
+          { text: "Today", value: "today" },
+          { text: "This Week", value: "thisWeek" },
+          { text: "This Month", value: "thisMonth" },
+          { text: "Last 3 Months", value: "last3Months" },
+          { text: "Last 6 Months", value: "last6Months" },
+          { text: "This Year", value: "thisYear" },
+          { text: "Last Year", value: "lastYear" },
+          { text: "Last 5 Years", value: "last5Years" }
+        ];
+      
+        // Value ranges for the dropdown (increment pattern)
+        const valueRanges = [
+          { text: "$0 - $50k", min: 0, max: 50000 },
+          { text: "$50k - $100k", min: 50000, max: 100000 },
+          { text: "$100k - $200k", min: 100000, max: 200000 },
+          { text: "$200k - $350k", min: 200000, max: 350000 },
+          { text: "$350k - $550k", min: 350000, max: 550000 },
+          { text: "$550k - $800k", min: 550000, max: 800000 },
+          { text: "$800k - $1.2M", min: 800000, max: 1200000 },
+          { text: "$1.2M+", min: 1200000, max: Infinity }
+        ];
+      
+        // Initialize dropdowns
+        Object.keys(filters).forEach((key) => {
+          const filter = filters[key];
+          const btn = document.getElementById(filter.btn);
+          const dropdown = document.getElementById(filter.dropdown);
+      
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (activeDropdown && activeDropdown !== dropdown) {
+              activeDropdown.classList.add("hidden");
+            }
+            dropdown.classList.toggle("hidden");
+            activeDropdown = dropdown;
+          });
+      
+          dropdown.querySelectorAll("div[data-value]").forEach((option) => {
+            option.addEventListener("click", () => {
+              const value = option.getAttribute("data-value");
+              filter.value = value;
+              btn.querySelector("span").textContent = option.textContent;
+              btn.querySelector("span").className = value ? "text-gray-700" : "text-gray-500";
+              dropdown.classList.add("hidden");
+              applyFilters();
+            });
+          });
+        });
+      
+        document.addEventListener("click", () => {
+          if (activeDropdown) {
+            activeDropdown.classList.add("hidden");
+            activeDropdown = null;
+          }
+        });
+      
+        document.getElementById("clearFilters").addEventListener("click", () => {
+          Object.values(filters).forEach((filter) => (filter.value = ""));
+          document.querySelectorAll(".lc-card").forEach((card) => (card.style.display = "block"));
+          document.getElementById("searchInput").value = "";
+          // Reset button text
+          Object.keys(filters).forEach((key) => {
+            const btn = document.getElementById(filters[key].btn);
+            btn.querySelector("span").textContent = btn.querySelector("span").textContent.includes("Range") ? btn.querySelector("span").textContent : key === "status" ? "Status" : key === "bank" ? "Bank" : key === "value" ? "Value Range" : "Date Range";
+            btn.querySelector("span").className = "text-gray-500";
+          });
+        });
+      
+        function applyFilters() {
+  const lcCards = document.querySelectorAll(".lc-card");
+
+  lcCards.forEach((card) => {
+    let showCard = true;
+
+    // Status filter
+    if (filters.status.value && showCard) {
+      const cardStatus = card.querySelector(".rounded-full").textContent.toLowerCase();
+      showCard = cardStatus.includes(filters.status.value.toLowerCase());
+    }
+
+    // Bank filter
+    if (filters.bank.value && showCard) {
+      // get the bank name directly under h3
+      const cardBank = card.querySelector("h3 + p")?.textContent.toLowerCase() || "";
+      showCard = cardBank.includes(filters.bank.value.toLowerCase());
+    }
+
+    // Value filter
+    if (filters.value.value && showCard) {
+      const cardValueText = card.querySelector("p.text-lg")?.textContent || "0";
+      const cardValue = Number(cardValueText.replace(/[^0-9.-]+/g, ""));
+      const selectedRange = valueRanges.find(r => r.text === filters.value.value);
+      if (selectedRange) {
+        showCard = cardValue >= selectedRange.min && cardValue < selectedRange.max;
+      }
+    }
+
+    // Date filter
+    if (filters.date.value && showCard) {
+      const cardDateText = card.querySelector("p.text-sm.font-medium")?.textContent || "";
+      const cardDate = new Date(cardDateText);
+      const now = new Date();
+      switch (filters.date.value) {
+        case "today":
+          showCard = cardDate.toDateString() === now.toDateString();
+          break;
+        case "thisWeek": {
+          const startOfWeek = new Date();
+          startOfWeek.setDate(now.getDate() - now.getDay());
+          showCard = cardDate >= startOfWeek;
+          break;
+        }
+        case "thisMonth":
+          showCard = cardDate.getMonth() === now.getMonth() && cardDate.getFullYear() === now.getFullYear();
+          break;
+        case "last3Months": {
+          const past = new Date();
+          past.setMonth(now.getMonth() - 3);
+          showCard = cardDate >= past;
+          break;
+        }
+        case "last6Months": {
+          const past = new Date();
+          past.setMonth(now.getMonth() - 6);
+          showCard = cardDate >= past;
+          break;
+        }
+        case "thisYear":
+          showCard = cardDate.getFullYear() === now.getFullYear();
+          break;
+        case "lastYear":
+          showCard = cardDate.getFullYear() === now.getFullYear() - 1;
+          break;
+        case "last5Years":
+          showCard = cardDate.getFullYear() >= now.getFullYear() - 5;
+          break;
+      }
+    }
+
+    card.style.display = showCard ? "block" : "none";
+  });
+}
+
+      });
+      </script>
+      
+    <script id="card-interactions">
+      document.addEventListener("DOMContentLoaded", function () {
+        const lcCards = document.querySelectorAll(".lc-card");
+        lcCards.forEach((card) => {
+          card.addEventListener("click", function () {
+            const lcNumber = this.querySelector("h3").textContent;
+            console.log("LC Card clicked:", lcNumber);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

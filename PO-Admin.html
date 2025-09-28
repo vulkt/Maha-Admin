@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Purchase Orders</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css"
+    />
+    <script>
+        tailwind.config = {
+          theme: {
+            extend: {
+              colors: {
+                primary: "#3B82F6",
+                secondary: "#E6F3FF",
+              },
+              borderRadius: {
+                none: "0px",
+                sm: "4px",
+                DEFAULT: "8px",
+                md: "12px",
+                lg: "16px",
+                xl: "20px",
+                "2xl": "24px",
+                "3xl": "32px",
+                full: "9999px",
+                button: "8px",
+              },
+            },
+          },
+        };
+      </script>
+      <style>
+        :where([class^="ri-"])::before { content: "\f3c2"; }
+      </style>
+      
+      <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        
+        const firebaseConfig = {
+          apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+          authDomain: "tex1-e6595.firebaseapp.com",
+          projectId: "tex1-e6595",
+          storageBucket: "tex1-e6595.firebasestorage.app",
+          messagingSenderId: "535507700855",
+          appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+        };
+        
+        let db;
+        let allDocs = { LC: [], TT: [] };
+        let selectedPO = localStorage.getItem("selectedPO") || "all";
+        
+        // 🔹 Active filters
+        let activeFilters = {
+          payment: null,
+          priceRange: null,
+          dateRange: null,
+        };
+        
+        function formatIssueDate(raw) {
+          if (!raw) return "—";
+          if (typeof raw === "object" && ("seconds" in raw || "_seconds" in raw)) {
+            const s = raw.seconds ?? raw._seconds;
+            return new Date(s * 1000).toLocaleDateString();
+          }
+          if (typeof raw === "number") {
+            if (raw > 1e12) return new Date(raw).toLocaleDateString();
+            if (raw > 1e9) return new Date(raw * 1000).toLocaleDateString();
+            if (raw >= 10101) {
+              const s = String(raw);
+              if (s.length === 8) {
+                const y = +s.slice(0, 4), m = +s.slice(4, 6) - 1, d = +s.slice(6, 8);
+                return new Date(y, m, d).toLocaleDateString();
+              }
+            }
+            return new Date(raw).toLocaleDateString();
+          }
+          return new Date(raw).toLocaleDateString();
+        }
+        
+        function paymentBadgeClasses(method) {
+          return method === "LC" ? "bg-blue-100 text-blue-800"
+               : method === "TT" ? "bg-green-100 text-green-800"
+               : "bg-gray-100 text-gray-700";
+        }
+        
+        function money(val) {
+          if (typeof val !== "number") return String(val);
+          return "$" + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        
+        // 🔹 Card renderer
+        function renderCards(docs) {
+          const poList = document.getElementById("poList");
+          poList.innerHTML = "";
+        
+          docs.forEach((data) => {
+            const poNo = data["PO-NO"];
+            const issueRaw = data["Issue-Date"];
+            const poValue = data["PO-Value"];
+            const payment = data["Payment-Method"];
+        
+            if (!poNo || !poValue || !payment || !issueRaw) return;
+        
+            const issueDate = formatIssueDate(issueRaw);
+            const badge = paymentBadgeClasses(payment);     
+        
+            const wrapper = document.createElement("div");
+            wrapper.className = "block cursor-pointer";
+        
+            wrapper.innerHTML = `
+              <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow po-card"
+                   data-po="${poNo}" data-price="${poValue}" data-payment="${payment}">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="text-sm text-gray-500">${issueDate}</div>
+                  <div class="text-lg font-semibold text-gray-900">PO-${poNo}</div>
+                  <div class="px-3 py-1 ${badge} text-xs font-medium rounded-full">${payment}</div>
+                </div>
+                <div class="flex items-center justify-between">
+                  <div class="text-2xl font-bold text-gray-900">${money(poValue)}</div>
+                  <div class="flex items-center gap-2 text-gray-500">
+                    <div class="w-4 h-4 flex items-center justify-center"><i class="ri-arrow-right-line"></i></div>
+                  </div>
+                </div>
+              </div>
+            `;
+        
+            wrapper.addEventListener("click", () => {
+              localStorage.setItem("selectedPONumber", poNo);
+              window.location.href = "PO-Details-Admin.html";
+            });
+        
+            poList.appendChild(wrapper);
+          });
+        }
+        
+        // 🔹 Helper: get unique values
+        function getUniqueValues(docs, field) {
+          return [...new Set(docs.map(d => d[field]).filter(Boolean))];
+        }
+        
+        // 🔹 Render filter dropdowns dynamically
+// 🔹 Render filter dropdowns dynamically
+function renderFilters(docs) {
+  const paymentDropdown = document.getElementById("paymentDropdown");
+  const priceDropdown = document.getElementById("priceDropdown");
+  const dateDropdown = document.getElementById("dateDropdown");
+
+  paymentDropdown.innerHTML = '<div class="p-2"></div>';
+  priceDropdown.innerHTML = '<div class="p-2"></div>';
+  dateDropdown.innerHTML = '<div class="p-2"></div>';
+
+  // --- Payment filter ---
+  getUniqueValues(docs, "Payment-Method").forEach(method => {
+    const btn = document.createElement("button");
+    btn.className = "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded";
+    btn.textContent = method;
+    btn.onclick = () => { activeFilters.payment = method; applyFilters(); };
+    paymentDropdown.firstChild.appendChild(btn);
+  });
+
+  // --- Price filter ---
+  const poValues = docs.map(d => d["PO-Value"]).filter(v => typeof v === "number");
+  const maxPrice = Math.max(...poValues);
+
+  // First three fixed steps
+  const ranges = [
+    { min: 0, max: 50000, label: "Under 50,000" },
+    { min: 50000, max: 100000, label: "50,000 - 100,000" },
+    { min: 100000, max: 150000, label: "100,000 - 150,000" }
+  ];
+
+  // Remaining ranges: grow dynamically based on previous max
+  let lastMax = 150000;
+  let increment = 50000; // start increment for next range
+
+  while (lastMax < maxPrice) {
+    let nextMax = lastMax + increment;
+    ranges.push({
+      min: lastMax,
+      max: nextMax,
+      label: `${lastMax.toLocaleString()} - ${nextMax.toLocaleString()}`
+    });
+
+    lastMax = nextMax;
+    increment += 50000; // next increment grows by 50k
+  }
+
+  // Add buttons to priceDropdown
+  ranges.forEach(range => {
+    const btn = document.createElement("button");
+    btn.className = "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded";
+    btn.textContent = range.label;
+    btn.onclick = () => {
+      activeFilters.priceRange = val => val >= range.min && val < range.max;
+      applyFilters();
+    };
+    priceDropdown.firstChild.appendChild(btn);
+  });
+
+  // --- Date filter stays the same ---
+  const timestamps = docs.map(d => new Date(formatIssueDate(d["Issue-Date"]))).filter(d => !isNaN(d));
+  if (timestamps.length > 0) {
+    const now = new Date();
+    const dateOptions = [
+      { label: "Today", test: d => d.toDateString() === now.toDateString() },
+      { label: "This Week", test: d => {
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - now.getDay());
+          startOfWeek.setHours(0,0,0,0);
+          return d >= startOfWeek;
+        } 
+      },
+      { label: "This Month", test: d => d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() },
+      { label: "Last 6 Months", test: d => d >= new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()) },
+      { label: "This Year", test: d => d.getFullYear() === now.getFullYear() },
+      { label: "Last 5 Years", test: d => d >= new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()) }
+    ];
+
+    dateOptions.forEach(opt => {
+      const btn = document.createElement("button");
+      btn.className = "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded";
+      btn.textContent = opt.label;
+      btn.onclick = () => { 
+        activeFilters.dateRange = opt.test; 
+        applyFilters(); 
+      };
+      dateDropdown.firstChild.appendChild(btn);
+    });
+  }
+
+  // --- Clear filters ---
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-gray-50 rounded";
+  clearBtn.textContent = "Clear Filters";
+  clearBtn.onclick = () => {
+    activeFilters = { payment: null, priceRange: null, dateRange: null };
+    renderCards([...allDocs.LC, ...allDocs.TT]);
+  };
+  paymentDropdown.firstChild.appendChild(clearBtn);
+}
+
+
+
+        
+        // 🔹 Apply active filters
+        function applyFilters() {
+          let filtered = [...allDocs.LC, ...allDocs.TT];
+          if (activeFilters.payment) filtered = filtered.filter(d => d["Payment-Method"] === activeFilters.payment);
+          if (activeFilters.priceRange) filtered = filtered.filter(d => activeFilters.priceRange(d["PO-Value"]));
+          if (activeFilters.dateRange) filtered = filtered.filter(d => activeFilters.dateRange(new Date(formatIssueDate(d["Issue-Date"]))));
+          renderCards(filtered);
+        }
+        
+        // 🔹 Load all POs
+        async function loadPOs() {
+          const app = initializeApp(firebaseConfig);
+          db = getFirestore(app);
+        
+          const lcSnap = await getDocs(collection(db, "maha", "PO", "LC-PO"));
+          const ttSnap = await getDocs(collection(db, "maha", "PO", "TT-PO"));
+          allDocs.LC = lcSnap.docs.map(d => d.data());
+          allDocs.TT = ttSnap.docs.map(d => d.data());
+        
+          const combined = [...allDocs.LC, ...allDocs.TT];
+          renderCards(combined);
+          renderFilters(combined);
+        }
+        
+        document.addEventListener("DOMContentLoaded", async () => {
+          await loadPOs();
+        });
+        </script>
+        
+        
+        
+        
+      
+      
+      
+      
+  </head>
+
+  <body class="bg-white min-h-screen">
+    <div class="w-full max-w-6xl mx-auto px-6 py-8">
+      <!-- Header -->
+<div class="mb-8 flex items-center justify-between">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 mb-2">Purchase Orders</h1>
+      <p class="text-gray-600">Manage and track your purchase orders</p>
+    </div>
+    <a 
+      href="PO-new.html" 
+      class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg shadow hover:bg-blue-600 transition-colors"
+    >
+      <i class="ri-add-line text-lg"></i>
+      Add Purchase Order
+    </a>
+  </div>
+  
+
+      <!-- Search Bar -->
+      <div class="mb-6">
+        <div class="relative">
+          <div
+            class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"
+          >
+            <div class="w-5 h-5 flex items-center justify-center">
+              <i class="ri-search-line text-gray-400"></i>
+            </div>
+          </div>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search by PO Number"
+            class="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+          />
+        </div>
+      </div>
+
+      <!-- Filter Section -->
+      <div class="mb-8 flex flex-wrap gap-3">
+        <div class="relative">
+          <button
+            id="dateFilter"
+            class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors !rounded-button whitespace-nowrap"
+          >
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-calendar-line text-gray-500"></i>
+            </div>
+            <span class="text-sm text-gray-700">Date</span>
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-arrow-down-s-line text-gray-400"></i>
+            </div>
+          </button>
+          <div
+            id="dateDropdown"
+            class="hidden absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+          >
+            <div class="p-2">
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Last 7 days</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Last 30 days</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Last 3 months</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">All time</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative">
+          <button
+            id="priceFilter"
+            class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors !rounded-button whitespace-nowrap"
+          >
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-money-dollar-circle-line text-gray-500"></i>
+            </div>
+            <span class="text-sm text-gray-700">Value</span>
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-arrow-down-s-line text-gray-400"></i>
+            </div>
+          </button>
+          <div
+            id="priceDropdown"
+            class="hidden absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+          >
+            <div class="p-2">
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Under $10,000</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">$10,000 - $50,000</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">$50,000 - $100,000</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Over $100,000</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative">
+          <button
+            id="paymentFilter"
+            class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors !rounded-button whitespace-nowrap"
+          >
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-bank-card-line text-gray-500"></i>
+            </div>
+            <span class="text-sm text-gray-700">Payment Method</span>
+            <div class="w-4 h-4 flex items-center justify-center">
+              <i class="ri-arrow-down-s-line text-gray-400"></i>
+            </div>
+          </button>
+          <div
+            id="paymentDropdown"
+            class="hidden absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+          >
+            <div class="p-2">
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Letter of Credit (LC)</button>
+              <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Telegraphic Transfer (TT)</button>
+            </div>
+          </div>
+        </div>
+
+        <button
+          class="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors !rounded-button whitespace-nowrap"
+        >
+          <div class="w-4 h-4 flex items-center justify-center">
+            <i class="ri-refresh-line"></i>
+          </div>
+          Clear Filters
+        </button>
+      </div>
+
+      <!-- PO Cards List -->
+      <div class="space-y-4" id="poList">
+        <!-- Cards are generated dynamically -->
+      </div>
+
+      <!-- Load More Button -->
+      <div class="mt-8 text-center">
+        <button
+          class="px-6 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors !rounded-button whitespace-nowrap"
+        >
+          Load More Purchase Orders
+        </button>
+      </div>
+    </div>
+
+    <!-- Search Functionality (unchanged) -->
+    <script id="searchFunctionality">
+      document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("searchInput");
+
+        searchInput.addEventListener("input", function () {
+          const searchTerm = this.value.toLowerCase().trim();
+          const poCards = document.querySelectorAll(".po-card");
+
+          poCards.forEach((card) => {
+            const poNumber = card.getAttribute("data-po").toLowerCase();
+            if (poNumber.includes(searchTerm)) {
+              // card is inside an <a>, keep wrapper visible
+              card.parentElement.style.display = "block";
+            } else {
+              card.parentElement.style.display = "none";
+            }
+          });
+        });
+      });
+    </script>
+
+    <!-- Filter Dropdowns (unchanged) -->
+    <script id="filterDropdowns">
+      document.addEventListener("DOMContentLoaded", function () {
+        const filterButtons = ["dateFilter", "priceFilter", "paymentFilter"];
+        const dropdowns = ["dateDropdown", "priceDropdown", "paymentDropdown"];
+
+        filterButtons.forEach((buttonId, index) => {
+          const button = document.getElementById(buttonId);
+          const dropdown = document.getElementById(dropdowns[index]);
+
+          button.addEventListener("click", function (e) {
+            e.stopPropagation();
+
+            dropdowns.forEach((dropdownId, dropdownIndex) => {
+              const otherDropdown = document.getElementById(dropdownId);
+              if (dropdownIndex !== index) {
+                otherDropdown.classList.add("hidden");
+              }
+            });
+
+            dropdown.classList.toggle("hidden");
+          });
+        });
+
+        document.addEventListener("click", function () {
+          dropdowns.forEach((dropdownId) => {
+            document.getElementById(dropdownId).classList.add("hidden");
+          });
+        });
+      });
+    </script>
+
+    <!-- (Optional) Original cardInteraction block preserved (UI unchanged) -->
+    <script id="cardInteraction">
+      document.addEventListener("DOMContentLoaded", function () {
+        const poCards = document.querySelectorAll(".po-card");
+        poCards.forEach((card) => {
+          card.addEventListener("click", function () {
+            const poNumber = this.getAttribute("data-po");
+            console.log("Clicked PO:", poNumber);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Add Shipments - Admin</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDoc, getFirestore, collection, getDocs, doc, setDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwdlfBZWbNVFsj3ttfS9lcVJphIsFkKmA",
+      authDomain: "tex1-e6595.firebaseapp.com",
+      projectId: "tex1-e6595",
+      storageBucket: "tex1-e6595.firebasestorage.app",
+      messagingSenderId: "535507700855",
+      appId: "1:535507700855:web:68f395bb2b3f7df52f4a72",
+    };
+    
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    
+    let shipments = [];
+    let selectedPO = null;
+    let selectedLC = null;
+    
+    // ------------------- PO FUNCTIONS -------------------
+async function loadPOs() {
+  const dropdown = document.getElementById("poDropdownList");
+  dropdown.innerHTML = "";
+
+  const lcRef = collection(db, "maha/PO/LC-PO");
+  const ttRef = collection(db, "maha/PO/TT-PO");
+  const [lcSnap, ttSnap] = await Promise.all([getDocs(lcRef), getDocs(ttRef)]);
+
+  const allDocs = [];
+  lcSnap.forEach(doc => allDocs.push({ id: doc.id, path: "maha/PO/LC-PO" }));
+  ttSnap.forEach(doc => allDocs.push({ id: doc.id, path: "maha/PO/TT-PO" }));
+
+  allDocs.forEach(po => {
+    const option = document.createElement("div");
+    option.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
+    option.textContent = `${po.id} (${po.path.split("/").pop()})`;
+    option.onclick = () => selectPO(po);
+    dropdown.appendChild(option);
+  });
+}
+
+function filterPOs() {
+  const input = document.getElementById("poSearch").value.toLowerCase();
+  const items = document.getElementById("poDropdownList").children;
+  Array.from(items).forEach(item => {
+    item.style.display = item.textContent.toLowerCase().includes(input) ? "block" : "none";
+  });
+}
+
+async function selectPO(po) {
+  selectedPO = po;
+  document.getElementById("poSearch").value = po.id;
+  document.getElementById("poDropdownList").classList.add("hidden");
+
+  // ✅ Auto-fill PO number field
+  document.getElementById("poNo").value = po.id;
+
+  try {
+    const poRef = doc(db, po.path, po.id);
+    const poSnap = await getDoc(poRef);
+    shipments = poSnap.exists() ? poSnap.data().shipments || [] : [];
+    renderShipments();
+  } catch (error) {
+    console.error("Error loading PO shipments:", error);
+    alert("Could not load shipments for this PO.");
+  }
+}
+
+function toggleDropdown() {
+  document.getElementById("poDropdownList").classList.toggle("hidden");
+}
+
+// ------------------- LC FUNCTIONS -------------------
+async function loadLCs() {
+  const dropdown = document.getElementById("lcDropdownList");
+  dropdown.innerHTML = "";
+
+  const lcCollectionRef = collection(db, "maha/LC/LC#"); 
+  const lcSnap = await getDocs(lcCollectionRef);
+
+  lcSnap.forEach(doc => {
+    const option = document.createElement("div");
+    option.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
+    option.textContent = doc.id;
+    option.onclick = () => selectLC(doc.id);
+    dropdown.appendChild(option);
+  });
+}
+
+function filterLCs() {
+  const input = document.getElementById("lcSearch").value.toLowerCase();
+  const items = document.getElementById("lcDropdownList").children;
+  Array.from(items).forEach(item => {
+    item.style.display = item.textContent.toLowerCase().includes(input) ? "block" : "none";
+  });
+}
+
+function toggleLCDropdown() {
+  document.getElementById("lcDropdownList").classList.toggle("hidden");
+}
+
+async function selectLC(lcId) {
+  selectedLC = lcId;
+  document.getElementById("lcSearch").value = lcId;
+  document.getElementById("lcDropdownList").classList.add("hidden");
+
+  // ✅ Auto-fill LC related field
+  document.getElementById("lcTtRelated").value = lcId;
+
+  try {
+    const lcRef = doc(db, `maha/LC/LC#/${lcId}/Details/LC-Info`);
+    const lcSnap = await getDoc(lcRef);
+    shipments = lcSnap.exists() ? lcSnap.data().shipments || [] : [];
+    renderShipments();
+  } catch (error) {
+    console.error("Error loading LC shipments:", error);
+    alert("Could not load shipments for this LC.");
+  }
+}
+
+    
+    // ------------------- SHIPMENT FUNCTIONS -------------------
+    function addShipment(event) {
+      event.preventDefault();
+      if (!selectedPO && !selectedLC) { alert("Please select a PO or LC first!"); return; }
+    
+      const finalPayment = parseFloat(document.getElementById("finalPayment").value) || 0;
+      const downPayment = 100 - finalPayment;
+    
+      const shipment = {
+        "Shipment-Date": document.getElementById("shipmentDate").value
+          ? Timestamp.fromDate(new Date(document.getElementById("shipmentDate").value)) : null,
+        "Payment-Terms": document.getElementById("paymentTerms").value,
+        "PO-NO": document.getElementById("poNo").value,
+        "Shipment-Value": parseFloat(document.getElementById("shipmentValue").value) || 0,
+        "Expected-Amount": parseFloat(document.getElementById("expectedAmount").value) || 0,
+        "LC-TT": document.getElementById("lcTt").value,
+        "Invoice-NO": document.getElementById("invoiceNo").value,
+        "LC-TT-Related": document.getElementById("lcTtRelated").value,
+        "Expected-Date": document.getElementById("expectedDate").value
+          ? Timestamp.fromDate(new Date(document.getElementById("expectedDate").value)) : null,
+        "Status": "Not Received",
+        "Final-Payment": finalPayment,
+        "Down-Payment": downPayment,
+      };
+    
+      shipments.push(shipment);
+      renderShipments();
+      document.getElementById("shipmentInputs").reset();
+    }
+    
+    function renderShipments() {
+      const tbody = document.getElementById("shipmentList");
+      tbody.innerHTML = "";
+      shipments.forEach((s, i) => {
+        const row = `
+          <tr class="border-b">
+            <td class="px-3 py-2">${s["Shipment-Date"] ? new Date(s["Shipment-Date"].seconds*1000).toLocaleDateString() : "—"}</td>
+            <td class="px-3 py-2">${s["Payment-Terms"] || "—"}</td>
+            <td class="px-3 py-2">${s["PO-NO"] || "—"}</td>
+            <td class="px-3 py-2">${s["Shipment-Value"] !== undefined ? s["Shipment-Value"].toFixed(2) : "—"}</td>
+            <td class="px-3 py-2">${s["Expected-Amount"] !== undefined ? s["Expected-Amount"].toFixed(2) : "—"}</td>
+            <td class="px-3 py-2">${s["LC-TT"] || "—"}</td>
+            <td class="px-3 py-2">${s["Invoice-NO"] || "—"}</td>
+            <td class="px-3 py-2">${s["LC-TT-Related"] || "—"}</td>
+            <td class="px-3 py-2">${s["Expected-Date"] ? new Date(s["Expected-Date"].seconds*1000).toLocaleDateString() : "—"}</td>
+            <td class="px-3 py-2">${s["Status"] || "—"}</td>
+            <td class="px-3 py-2">${s["Final-Payment"] !== undefined ? s["Final-Payment"] + "%" : "—"}</td>
+            <td class="px-3 py-2">${s["Down-Payment"] !== undefined ? s["Down-Payment"] + "%" : "—"}</td>
+            <td class="px-3 py-2 text-red-600 cursor-pointer" onclick="removeShipment(${i})">✕</td>
+          </tr>`;
+        tbody.insertAdjacentHTML("beforeend", row);
+      });
+    }
+    
+    function removeShipment(index) {
+      shipments.splice(index, 1);
+      renderShipments();
+    }
+    
+    async function saveShipments(event) {
+      event.preventDefault();
+      if (!selectedPO && !selectedLC) { alert("Please select at least a PO or LC!"); return; }
+    
+      try {
+        if (selectedPO) {
+          const poRef = doc(db, selectedPO.path, selectedPO.id);
+          await setDoc(poRef, { shipments }, { merge: true });
+        }
+        if (selectedLC) {
+          const lcRef = doc(db, `maha/LC/LC#/${selectedLC}/Details/LC-Info`);
+          await setDoc(lcRef, { shipments }, { merge: true });
+        }
+    
+        alert("Shipments saved successfully!");
+        shipments = [];
+        renderShipments();
+      } catch (error) {
+        console.error("Error saving shipments:", error);
+        alert("Failed to save shipments. Check console for details.");
+      }
+    }
+    
+    function updateDownPayment() {
+      const finalPayment = parseFloat(document.getElementById("finalPayment").value) || 0;
+      document.getElementById("downPayment").value = (100 - finalPayment).toFixed(2);
+    }
+    
+    // expose functions to HTML
+    window.addShipment = addShipment;
+    window.removeShipment = removeShipment;
+    window.saveShipments = saveShipments;
+    window.toggleDropdown = toggleDropdown;
+    window.filterPOs = filterPOs;
+    window.toggleLCDropdown = toggleLCDropdown;
+    window.filterLCs = filterLCs;
+    window.updateDownPayment = updateDownPayment;
+    
+    loadPOs();
+    loadLCs();
+    </script>
+    
+</head>
+<body class="bg-white min-h-screen">
+  <div class="max-w-6xl mx-auto px-6 py-8">
+    <h1 class="text-2xl font-bold text-black mb-6">Add Shipments</h1>
+
+    <!-- PO Selector -->
+    <div class="relative mb-4">
+      <label class="block text-sm font-medium text-gray-600 mb-1">Select PO</label>
+      <input id="poSearch" type="text" placeholder="Search PO..." 
+             oninput="filterPOs()" onclick="toggleDropdown()" 
+             class="w-full border rounded-lg px-3 py-2">
+      <div id="poDropdownList" 
+           class="absolute z-10 w-full bg-white border rounded-lg shadow max-h-60 overflow-y-auto hidden">
+      </div>
+    </div>
+
+    <!-- LC Selector -->
+    <div class="relative mb-8">
+      <label class="block text-sm font-medium text-gray-600 mb-1">Select LC</label>
+      <input id="lcSearch" type="text" placeholder="Search LC..." 
+             oninput="filterLCs()" onclick="toggleLCDropdown()" 
+             class="w-full border rounded-lg px-3 py-2">
+      <div id="lcDropdownList" 
+           class="absolute z-10 w-full bg-white border rounded-lg shadow max-h-60 overflow-y-auto hidden">
+      </div>
+    </div>
+
+    <!-- New Shipment Form -->
+    <form id="shipmentInputs" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" onsubmit="addShipment(event)">
+      <!-- Shipment fields (same as before) -->
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Shipment Date</label>
+        <input id="shipmentDate" type="date" class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Payment Terms</label>
+        <select id="paymentTerms" class="border rounded-lg px-3 py-2">
+          <option value="">Select Payment Terms</option>
+          <option value="at sight">At Sight</option>
+          <option value="30">30 Days</option>
+          <option value="60">60 Days</option>
+          <option value="90">90 Days</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">PO Number</label>
+        <input id="poNo" type="number" placeholder="PO No." class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Shipment Value</label>
+        <input id="shipmentValue" type="number" step="0.01" placeholder="Shipment Value" class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Expected Amount</label>
+        <input id="expectedAmount" type="number" step="0.01" placeholder="Expected Amount" class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">LC/TT Type</label>
+        <select id="lcTt" class="border rounded-lg px-3 py-2">
+          <option value="">Select LC/TT</option>
+          <option value="LC">LC</option>
+          <option value="TT">TT</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Invoice Number</label>
+        <input id="invoiceNo" type="text" placeholder="Invoice No." class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">LC/TT Related</label>
+        <input id="lcTtRelated" type="text" placeholder="LC/TT Related" class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Expected Date</label>
+        <input id="expectedDate" type="date" class="border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Status of Shipment</label>
+        <select id="status" class="border rounded-lg px-3 py-2">
+          <option value="Not Received">Not Received</option>
+          <option value="Received">Received</option>
+          <option value="Pending">Pending</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Final Payment (%)</label>
+        <input id="finalPayment" type="number" step="0.01" placeholder="Final Payment (%)" 
+               class="border rounded-lg px-3 py-2" oninput="updateDownPayment()">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Down Payment (%)</label>
+        <input id="downPayment" type="number" step="0.01" placeholder="Down Payment (%)" class="border rounded-lg px-3 py-2" readonly>
+      </div>
+      <div class="md:col-span-3">
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 w-full">
+          Add Shipment
+        </button>
+      </div>
+    </form>
+
+    <!-- Shipment Table -->
+    <table class="w-full border rounded-lg mb-8">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-3 py-2 text-left">Shipment Date</th>
+          <th class="px-3 py-2 text-left">Payment Terms</th>
+          <th class="px-3 py-2 text-left">PO No</th>
+          <th class="px-3 py-2 text-left">Shipment Value</th>
+          <th class="px-3 py-2 text-left">Expected Amount</th>
+          <th class="px-3 py-2 text-left">LC/TT</th>
+          <th class="px-3 py-2 text-left">Invoice No</th>
+          <th class="px-3 py-2 text-left">LC/TT Related</th>
+          <th class="px-3 py-2 text-left">Expected Date</th>
+          <th class="px-3 py-2 text-left">Status</th>
+          <th class="px-3 py-2 text-left">Final Payment (%)</th>
+          <th class="px-3 py-2 text-left">Down Payment (%)</th>
+          <th class="px-3 py-2"></th>
+        </tr>
+      </thead>
+      <tbody id="shipmentList"></tbody>
+    </table>
+
+    <!-- Save Button -->
+    <div class="flex justify-end">
+      <button onclick="saveShipments(event)" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+        Save Shipments
+      </button>
+    </div>
+  </div>
+</body>
+</html>
