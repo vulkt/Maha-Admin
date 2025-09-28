@@ -239,9 +239,12 @@
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <div>
-          <p class="text-sm text-gray-500 mb-1">Down Payment</p>
-          <input type="number" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="Down-Payment">
-        </div>
+  <p class="text-sm text-gray-500 mb-1">Down Payment</p>
+  <p class="text-sm font-medium text-gray-900">
+    ${lcInfo["Down-Payment"] != null ? lcInfo["Down-Payment"] + "%" : "0%"}
+  </p>
+</div>
+
         <div>
           <p class="text-sm text-gray-500 mb-1">LC Utilized</p>
           <input type="number" class="edit-input text-sm font-medium text-gray-900 w-full" data-field="LC-Utilized">
